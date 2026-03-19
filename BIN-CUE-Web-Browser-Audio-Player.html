@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BIN/CUE CD Player</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:     #080a0c;
+    --panel:  #0e1215;
+    --panel2: #131820;
+    --bdr:    #1e2830;
+    --bdr2:   #2a3a48;
+    --acc:    #00d4ff;
+    --acc2:   #ff6b20;
+    --grn:    #39ff7a;
+    --red:    #ff3a5c;
+    --yel:    #ffd020;
+    --txt:    #c8d8e8;
+    --dim:    #3a5060;
+    --dim2:   #506070;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--txt);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; padding: 20px 12px 40px;
+    background-image: radial-gradient(ellipse 80% 40% at 50% -5%, rgba(0,100,140,0.15) 0%, transparent 65%);
+  }
+
+  .header { width: 100%; max-width: 760px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 1rem; color: var(--acc); letter-spacing: 0.1em; }
+  .logo span { color: var(--acc2); }
+  .tagline { font-size: 0.6rem; color: var(--dim2); letter-spacing: 0.1em; }
+  .header-right { margin-left: auto; font-size: 0.6rem; color: var(--dim); }
+
+  .card {
+    width: 100%; max-width: 760px;
+    background: var(--panel);
+    border: 1px solid var(--bdr2);
+    border-radius: 4px; overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--bdr2); border-radius: 3px;
+    margin: 20px; padding: 40px 20px;
+    text-align: center; cursor: pointer; position: relative;
+    transition: border-color 0.2s;
+  }
+  .dropzone.drag { border-color: var(--acc); background: rgba(0,212,255,0.04); }
+  .dropzone:hover { border-color: var(--dim2); }
+  .dropzone input {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 2rem; margin-bottom: 10px; opacity: 0.5; }
+  .drop-title { font-family: 'Orbitron', monospace; font-size: 0.8rem; color: var(--acc); letter-spacing: 0.1em; margin-bottom: 6px; }
+  .drop-sub { font-size: 0.68rem; color: var(--dim2); }
+
+  /* Missing BIN warning */
+  .bin-warn {
+    display: none; margin: 0 20px 16px; padding: 10px 14px;
+    background: rgba(255,107,32,0.08); border: 1px solid rgba(255,107,32,0.3);
+    border-radius: 3px; font-size: 0.68rem; color: var(--acc2);
+  }
+  .bin-warn.visible { display: block; }
+  .bin-warn ul { margin: 6px 0 0 16px; }
+  .bin-warn li { margin: 2px 0; }
+
+  /* Player */
+  .player { display: none; flex-direction: column; }
+  .player.visible { display: flex; }
+
+  /* Now playing */
+  .now-playing { background: var(--panel2); border-bottom: 1px solid var(--bdr); padding: 16px 20px 14px; }
+  .np-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+  .np-disc { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .np-disc-name { font-size: 0.6rem; color: var(--dim2); letter-spacing: 0.1em; text-transform: uppercase; }
+  .np-disc-file { font-size: 0.75rem; color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+  .np-bin-tag { font-size: 0.6rem; color: var(--dim2); margin-top: 1px; }
+
+  .np-state {
+    font-family: 'Orbitron', monospace; font-size: 0.6rem;
+    padding: 3px 8px; border-radius: 2px; flex-shrink: 0;
+    background: rgba(0,212,255,0.08); color: var(--acc);
+    border: 1px solid rgba(0,212,255,0.2);
+    letter-spacing: 0.1em; transition: color 0.2s, background 0.2s, border-color 0.2s;
+  }
+  .np-state.playing { color: var(--grn); border-color: rgba(57,255,122,0.3); background: rgba(57,255,122,0.07); }
+  .np-state.paused  { color: var(--yel); border-color: rgba(255,208,32,0.3);  background: rgba(255,208,32,0.07); }
+
+  .np-track-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .np-tracknum { font-family: 'Orbitron', monospace; font-size: 2.2rem; font-weight: 900; color: var(--acc); line-height: 1; }
+  .np-trackname { font-size: 0.75rem; color: var(--dim2); }
+
+  .np-time-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+  .np-elapsed { font-family: 'Orbitron', monospace; font-size: 1.8rem; font-weight: 700; color: var(--txt); letter-spacing: 0.04em; }
+  .np-sep { color: var(--dim); font-size: 1rem; }
+  .np-total { font-family: 'Orbitron', monospace; font-size: 0.9rem; color: var(--dim2); }
+  .np-remain { font-size: 0.65rem; color: var(--dim); margin-left: 4px; }
+
+  .progress-wrap {
+    position: relative; height: 5px;
+    background: var(--bdr); border-radius: 3px;
+    cursor: pointer; margin-bottom: 10px; overflow: hidden;
+  }
+  /* transform:scaleX is GPU-composited — no layout reflow on update */
+  .progress-fill {
+    height: 100%; width: 100%;
+    background: linear-gradient(90deg, var(--acc), rgba(0,212,255,0.5));
+    border-radius: 3px;
+    transform-origin: left;
+    transform: scaleX(0);
+    transition: transform 0.4s linear;
+  }
+
+  /* Canvas visualizer */
+  .viz-canvas { width: 100%; height: 32px; display: block; margin-bottom: 10px; }
+
+  .vol-row { display: flex; align-items: center; gap: 10px; }
+  .vol-label { font-size: 0.6rem; color: var(--dim2); letter-spacing: 0.1em; min-width: 26px; }
+  .vol-slider {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 2px; outline: none; cursor: pointer;
+    background: linear-gradient(90deg, var(--grn) 80%, var(--bdr) 80%);
+  }
+  .vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px;
+    border-radius: 50%; background: var(--grn); cursor: pointer;
+  }
+  .vol-slider::-moz-range-thumb {
+    width: 16px; height: 16px; border: none;
+    border-radius: 50%; background: var(--grn); cursor: pointer;
+  }
+  .vol-pct { font-size: 0.65rem; color: var(--yel); min-width: 34px; text-align: right; }
+
+  /* Transport */
+  .transport {
+    display: flex; align-items: center; justify-content: center;
+    flex-wrap: wrap; gap: 8px; padding: 12px 16px;
+    border-bottom: 1px solid var(--bdr);
+  }
+  .btn {
+    background: var(--panel2); border: 1px solid var(--bdr2);
+    color: var(--txt); border-radius: 3px;
+    font-family: 'Share Tech Mono', monospace; font-size: 1rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.1s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .btn:active { opacity: 0.6; }
+  .btn-sm { width: 36px; height: 36px; }
+  .btn-md { width: 44px; height: 44px; font-size: 1.2rem; }
+  .btn-play {
+    width: 52px; height: 52px; font-size: 1.4rem;
+    background: var(--acc); color: var(--bg); border-color: var(--acc);
+  }
+  .btn-play.paused { background: var(--acc2); border-color: var(--acc2); }
+  .btn-rip {
+    margin-left: auto; font-size: 0.6rem; letter-spacing: 0.08em;
+    padding: 0 10px; height: 34px; color: var(--acc2);
+    border-color: rgba(255,107,32,0.3); background: rgba(255,107,32,0.07);
+  }
+  .btn-rip-all {
+    font-size: 0.6rem; letter-spacing: 0.08em;
+    padding: 0 10px; height: 34px; color: var(--yel);
+    border-color: rgba(255,208,32,0.3); background: rgba(255,208,32,0.06);
+  }
+
+  /* Track list */
+  .tracklist-header {
+    display: grid; grid-template-columns: 30px 42px 1fr 64px 84px;
+    gap: 6px; padding: 6px 14px;
+    font-size: 0.58rem; color: var(--dim); letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--bdr); background: var(--panel);
+  }
+  .tracklist { max-height: 260px; overflow-y: auto; }
+  .tracklist::-webkit-scrollbar { width: 4px; }
+  .tracklist::-webkit-scrollbar-track { background: var(--panel); }
+  .tracklist::-webkit-scrollbar-thumb { background: var(--bdr2); border-radius: 2px; }
+
+  .track-row {
+    display: grid; grid-template-columns: 30px 42px 1fr 64px 84px;
+    gap: 6px; padding: 8px 14px; cursor: pointer;
+    border-bottom: 1px solid var(--bdr); align-items: center;
+    contain: layout style;
+  }
+  .track-row:active { background: rgba(0,212,255,0.06); }
+  .track-row.active { background: rgba(0,212,255,0.07); }
+  .track-row.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
+  .track-marker { font-size: 0.75rem; color: var(--acc); }
+  .track-num { font-family: 'Orbitron', monospace; font-size: 0.7rem; color: var(--dim2); }
+  .track-row.active .track-num { color: var(--acc); }
+  .badge {
+    display: inline-block; font-size: 0.58rem; padding: 1px 5px;
+    border-radius: 2px; letter-spacing: 0.08em;
+  }
+  .badge-audio { background: rgba(57,255,122,0.1); color: var(--grn); border: 1px solid rgba(57,255,122,0.2); }
+  .badge-data  { background: rgba(58,80,96,0.3);   color: var(--dim2); border: 1px solid var(--bdr); }
+  .badge-warn  { background: rgba(255,107,32,0.1);  color: var(--acc2); border: 1px solid rgba(255,107,32,0.3); }
+  .track-dur   { font-size: 0.7rem;  color: var(--dim2); text-align: right; }
+  .track-start { font-size: 0.6rem;  color: var(--dim);  text-align: right; }
+
+  /* Rip overlay */
+  .rip-overlay {
+    display: none; position: fixed;
+    top: 0; right: 0; bottom: 0; left: 0;
+    background: rgba(8,10,12,0.93);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .rip-overlay.visible { display: flex; }
+  .rip-box {
+    background: var(--panel); border: 1px solid var(--bdr2);
+    border-radius: 4px; padding: 28px 32px;
+    min-width: 300px; max-width: 500px; width: 90vw;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+  .rip-title { font-family: 'Orbitron', monospace; font-size: 0.75rem; color: var(--acc2); letter-spacing: 0.1em; margin-bottom: 4px; }
+  .rip-subtitle { font-size: 0.65rem; color: var(--dim2); margin-bottom: 16px; }
+  .rip-track-name { font-size: 0.75rem; color: var(--txt); margin-bottom: 10px; min-height: 1.2em; }
+  .rip-bar-wrap { height: 7px; background: var(--bdr); border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+  .rip-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--acc2), var(--yel)); border-radius: 4px; transition: width 0.2s linear; }
+  .rip-stats { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--dim2); margin-bottom: 14px; }
+  .rip-log { font-size: 0.63rem; color: var(--dim2); max-height: 100px; overflow-y: auto; }
+  .rip-log-entry { padding: 2px 0; }
+  .rip-log-entry.ok  { color: var(--grn); }
+  .rip-log-entry.err { color: var(--red); }
+  .rip-log-entry.cur { color: var(--yel); }
+  .rip-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+  /* Status bar */
+  .statusbar { padding: 6px 14px; font-size: 0.6rem; color: var(--dim); border-top: 1px solid var(--bdr); }
+  .status-ok   { color: var(--grn); }
+  .status-err  { color: var(--red); }
+  .status-info { color: var(--acc); }
+
+  @media (max-width: 480px) {
+    .tracklist-header, .track-row { grid-template-columns: 26px 36px 1fr 56px; }
+    .track-start { display: none; }
+    .btn-rip, .btn-rip-all { font-size: 0.55rem; padding: 0 7px; }
+    .np-tracknum { font-size: 1.8rem; }
+    .np-elapsed  { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">BIN<span>/</span>CUE <span style="color:var(--txt);font-weight:400">CD PLAYER</span></div>
+    <div class="tagline">WEB AUDIO · MULTI-BIN · NO SERVER</div>
+  </div>
+  <div class="header-right" id="headerHint">TAP TO LOAD</div>
+</div>
+
+<div class="card">
+  <div class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept=".cue,.bin,.CUE,.BIN,*/*" multiple>
+    <div class="drop-icon">💿</div>
+    <div class="drop-title">LOAD CUE + BIN FILES</div>
+    <div class="drop-sub" id="dropHint">Tap to browse · Select CUE and all BIN files</div>
+  </div>
+
+  <div class="bin-warn" id="binWarn">
+    <strong>⚠ Missing BIN file(s) — add them by dropping on the page:</strong>
+    <ul id="binWarnList"></ul>
+  </div>
+
+  <div class="player" id="player">
+    <div class="now-playing">
+      <div class="np-top">
+        <div class="np-disc">
+          <div class="np-disc-name">DISC IMAGE</div>
+          <div class="np-disc-file" id="discFile">—</div>
+          <div class="np-bin-tag" id="binTag"></div>
+        </div>
+        <div class="np-state" id="stateLabel">STOPPED</div>
+      </div>
+      <div class="np-track-row">
+        <div class="np-tracknum" id="trackNum">01</div>
+        <div class="np-trackname" id="trackName">Audio Track</div>
+      </div>
+      <div class="np-time-row">
+        <div class="np-elapsed" id="elapsed">00:00</div>
+        <div class="np-sep">/</div>
+        <div class="np-total" id="totalTime">00:00</div>
+        <div class="np-remain" id="remaining">-00:00</div>
+      </div>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <canvas class="viz-canvas" id="vizCanvas" height="32"></canvas>
+      <div class="vol-row">
+        <div class="vol-label">VOL</div>
+        <input type="range" class="vol-slider" id="volSlider" min="0" max="1" step="0.01" value="0.8">
+        <div class="vol-pct" id="volPct">80%</div>
+      </div>
+    </div>
+
+    <div class="transport">
+      <button class="btn btn-sm"      id="btnPrev">⏮</button>
+      <button class="btn btn-md"      id="btnStop">⏹</button>
+      <button class="btn btn-play"    id="btnPlay">▶</button>
+      <button class="btn btn-md"      id="btnNext">⏭</button>
+      <button class="btn btn-rip"     id="btnRip">RIP TRACK</button>
+      <button class="btn btn-rip-all" id="btnRipAll">RIP ALL</button>
+    </div>
+
+    <div class="tracklist-header">
+      <span></span><span>#</span><span>TYPE</span>
+      <span style="text-align:right">DUR</span>
+      <span style="text-align:right">START</span>
+    </div>
+    <div class="tracklist" id="tracklist"></div>
+    <div class="statusbar" id="statusbar">Ready</div>
+  </div>
+</div>
+
+<div class="rip-overlay" id="ripOverlay">
+  <div class="rip-box">
+    <div class="rip-title"     id="ripTitle">RIPPING</div>
+    <div class="rip-subtitle"  id="ripSubtitle"></div>
+    <div class="rip-track-name" id="ripTrackName"></div>
+    <div class="rip-bar-wrap"><div class="rip-bar-fill" id="ripBarFill"></div></div>
+    <div class="rip-stats">
+      <span id="ripTime">00:00 / 00:00</span>
+      <span id="ripPct">0%</span>
+    </div>
+    <div class="rip-log" id="ripLog"></div>
+    <div class="rip-actions">
+      <button class="btn" id="ripCancel" style="padding:0 14px;height:32px;font-size:0.65rem;">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Constants ────────────────────────────────────────────────────────────
+const SECTOR       = 2352;
+const SEC_RATE     = 75;
+const SR           = 44100;
+const CH           = 2;
+const BPS          = 2;
+const STREAM_SEC   = 8;          // seconds per streamed chunk
+const STREAM_SECTS = SEC_RATE * STREAM_SEC;
+const LOOKAHEAD    = 3.0;        // seconds to buffer ahead
+const SCHED_MS     = 500;        // scheduler interval (ms)
+
+// ── State ────────────────────────────────────────────────────────────────
+const S = {
+  tracks: [], binMap: {}, cueName: '', curIdx: 0,
+  audioCtx: null, gainNode: null,
+  schedNodes: [], streamTimer: null, streamDone: false,
+  nextStartTime: 0, streamSector: 0, streamEnd: 0,
+  trackStartCtxTime: 0, trackStartOffset: 0,
+  playing: false, paused: false, pausePos: 0,
+  volume: 0.8, ripCancel: false,
+};
+
+// ── DOM ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const dz = $('dropzone'), fi = $('fileInput'), player = $('player');
+const discFile = $('discFile'), binTag = $('binTag'), stateLabel = $('stateLabel');
+const trackNum = $('trackNum'), trackName = $('trackName');
+const elapsed = $('elapsed'), totalTime = $('totalTime'), remaining = $('remaining');
+const progressFill = $('progressFill'), progressWrap = $('progressWrap');
+const tracklist = $('tracklist'), statusbar = $('statusbar');
+const btnPlay = $('btnPlay'), btnStop = $('btnStop'), btnPrev = $('btnPrev'), btnNext = $('btnNext');
+const btnRip = $('btnRip'), btnRipAll = $('btnRipAll');
+const volSlider = $('volSlider'), volPct = $('volPct');
+const ripOverlay = $('ripOverlay'), ripTitle = $('ripTitle'), ripSubtitle = $('ripSubtitle');
+const ripTrackName = $('ripTrackName'), ripBarFill = $('ripBarFill');
+const ripTime = $('ripTime'), ripPct = $('ripPct'), ripLog = $('ripLog'), ripCancel = $('ripCancel');
+const vizCanvas = $('vizCanvas'), binWarn = $('binWarn'), binWarnList = $('binWarnList');
+
+// ── Platform ─────────────────────────────────────────────────────────────
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (!isIOS) {
+  $('headerHint').textContent = 'DROP OR CLICK TO LOAD';
+  $('dropHint').textContent   = 'Drag & drop or click · CUE + all BIN files';
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+const mmss = s => {
+  s = Math.max(0, Math.floor(s));
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+};
+const mmssff = sec => {
+  const f = sec % SEC_RATE, s = Math.floor(sec / SEC_RATE);
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}:${String(f).padStart(2,'0')}`;
+};
+const secOf = sectors => sectors / SEC_RATE;
+const setStatus = (msg, cls='') => { statusbar.innerHTML = `<span class="${cls}">${msg}</span>`; };
+
+function readBlobAsAB(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result);
+    r.onerror = () => rej(new Error('Read failed'));
+    r.readAsArrayBuffer(blob);
+  });
+}
+
+// ── CUE Parser ───────────────────────────────────────────────────────────
+function parseCue(text) {
+  const tracks = [], cueFiles = [];
+  let curFile = null, curTrack = null;
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim(), u = line.toUpperCase();
+    if (u.startsWith('FILE')) {
+      const m = line.match(/FILE\s+"([^"]+)"/i) || line.match(/FILE\s+(\S+)/i);
+      if (m) { curFile = { name: m[1], tracks: [] }; cueFiles.push(curFile); }
+    } else if (u.startsWith('TRACK')) {
+      const p = line.split(/\s+/);
+      curTrack = { number: parseInt(p[1]), type: p[2].toUpperCase(), index: {}, binName: curFile?.name || '' };
+      curFile?.tracks.push(curTrack);
+      tracks.push(curTrack);
+    } else if (u.startsWith('INDEX') && curTrack) {
+      const p = line.split(/\s+/);
+      curTrack.index[parseInt(p[1])] = tsToSec(p[2]);
+    }
+  }
+
+  // Compute start / length per FILE group
+  for (const f of cueFiles) {
+    for (let i = 0; i < f.tracks.length; i++) {
+      const t = f.tracks[i];
+      t.start = t.index[1] ?? t.index[0] ?? 0;
+      t.length = i + 1 < f.tracks.length
+        ? (f.tracks[i+1].index[1] ?? f.tracks[i+1].index[0] ?? 0) - t.start
+        : 0; // filled from file size once BIN is known
+    }
+  }
+  return { tracks, cueFiles };
+}
+
+function tsToSec(s) {
+  const [m, sec, f] = s.split(':').map(Number);
+  return (m * 60 + sec) * SEC_RATE + f;
+}
+
+// ── File loading ─────────────────────────────────────────────────────────
+function handleFiles(fileList) {
+  const files = [...fileList];
+  let cueFile = null;
+  const binFiles = {};
+
+  for (const f of files) {
+    const ext = f.name.split('.').pop().toLowerCase();
+    if (ext === 'cue') cueFile = f;
+    else if (ext === 'bin') { binFiles[f.name] = f; binFiles[f.name.toLowerCase()] = f; }
+  }
+
+  // If player already showing — allow dropping extra BIN files to satisfy missing ones
+  if (player.classList.contains('visible') && !cueFile && Object.keys(binFiles).length) {
+    mergeBins(binFiles); return;
+  }
+
+  // iOS / no-extension fallback: smallest file = CUE, rest = BINs
+  if (!cueFile) {
+    const sorted = [...files].sort((a,b) => a.size - b.size);
+    if (sorted.length >= 1 && sorted[0].size < 500000) {
+      cueFile = sorted[0];
+      for (let i = 1; i < sorted.length; i++) {
+        const f = sorted[i];
+        binFiles[f.name] = f; binFiles[f.name.toLowerCase()] = f;
+      }
+    }
+  }
+
+  if (!cueFile) { setStatus('No .cue file found', 'status-err'); return; }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const { tracks, cueFiles } = parseCue(e.target.result);
+      if (!tracks.length) throw new Error('No tracks found in CUE');
+
+      const newBinMap = {}, missing = [];
+      for (const cf of cueFiles) {
+        const base    = cf.name.replace(/\\/g,'/').split('/').pop();
+        const baseLow = base.toLowerCase();
+        const found   = binFiles[base] || binFiles[baseLow] ||
+          Object.values(binFiles).find(f =>
+            f.name.toLowerCase() === baseLow ||
+            f.name.toLowerCase().replace(/\s/g,'') === baseLow.replace(/\s/g,'')
+          );
+        if (found) {
+          newBinMap[base] = found; newBinMap[baseLow] = found;
+          const lastT = cf.tracks[cf.tracks.length - 1];
+          if (lastT && lastT.length === 0)
+            lastT.length = Math.floor(found.size / SECTOR) - lastT.start;
+        } else {
+          missing.push(base);
+        }
+      }
+
+      if (missing.length) {
+        binWarnList.innerHTML = missing.map(n => `<li>${n}</li>`).join('');
+        binWarn.classList.add('visible');
+      } else {
+        binWarn.classList.remove('visible');
+      }
+
+      stopPlayback();
+      S.tracks = tracks; S.binMap = newBinMap; S.cueName = cueFile.name;
+
+      discFile.textContent = cueFile.name;
+      buildTrackList();
+
+      const firstAudio = tracks.findIndex(t => t.type.includes('AUDIO') && getBin(t));
+      S.curIdx = firstAudio >= 0 ? firstAudio : 0;
+      updateTrackUI();
+      dz.style.display = 'none';
+      player.classList.add('visible');
+      resizeViz();
+
+      const audioN = tracks.filter(t => t.type.includes('AUDIO')).length;
+      const binN   = new Set(Object.values(newBinMap)).size;
+      setStatus(`${tracks.length} tracks · ${audioN} audio · ${binN} BIN${binN !== 1 ? 's' : ''}${missing.length ? ` · ⚠ ${missing.length} BIN missing` : ''}`, 'status-info');
+    } catch(err) { setStatus(`Parse error: ${err.message}`, 'status-err'); }
+  };
+  reader.readAsText(cueFile);
+}
+
+// Merge extra BIN files dropped after initial load (to resolve missing BINs)
+function mergeBins(binFiles) {
+  let resolved = 0;
+  for (const [k, f] of Object.entries(binFiles)) {
+    if (!S.binMap[k]) { S.binMap[k] = f; resolved++; }
+  }
+  // Recompute last-track lengths for newly resolved BINs
+  // Re-find missing
+  const missing = [];
+  for (const t of S.tracks) {
+    if (t.type.includes('AUDIO') && !getBin(t)) missing.push(t.binName);
+  }
+  if (missing.length === 0) binWarn.classList.remove('visible');
+  else binWarnList.innerHTML = [...new Set(missing)].map(n => `<li>${n}</li>`).join('');
+
+  buildTrackList();
+  setStatus(`Added ${resolved} BIN file(s)${missing.length ? ` · ${missing.length} still missing` : ' · All BINs loaded'}`, resolved ? 'status-ok' : 'status-err');
+}
+
+function getBin(track) {
+  if (!track.binName) return null;
+  const base = track.binName.replace(/\\/g,'/').split('/').pop();
+  return S.binMap[base] || S.binMap[base.toLowerCase()] || null;
+}
+
+// ── Drop / input ─────────────────────────────────────────────────────────
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
+fi.addEventListener('change', () => { handleFiles(fi.files); fi.value = ''; });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const files = [...e.dataTransfer.files];
+  if (files.length) handleFiles(files);
+});
+
+// ── AudioContext ──────────────────────────────────────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
+function ensureCtx() {
+  if (!S.audioCtx) {
+    S.audioCtx = new AudioCtx({ sampleRate: SR });
+    S.gainNode = S.audioCtx.createGain();
+    S.gainNode.gain.value = S.volume;
+    S.gainNode.connect(S.audioCtx.destination);
+  }
+  if (S.audioCtx.state === 'suspended') S.audioCtx.resume();
+}
+
+document.addEventListener('touchstart', () => {
+  if (S.audioCtx?.state === 'suspended') S.audioCtx.resume();
+}, { once: true, passive: true });
+
+// ── Streaming playback ────────────────────────────────────────────────────
+async function decodeChunk(binFile, startSector, numSectors) {
+  const ab    = await readBlobAsAB(binFile.slice(startSector * SECTOR, (startSector + numSectors) * SECTOR));
+  const int16 = new Int16Array(ab);
+  const frames = Math.floor(int16.length / CH);
+  const buf   = S.audioCtx.createBuffer(CH, frames, SR);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  const inv = 1 / 32768;
+  for (let i = 0; i < frames; i++) { L[i] = int16[i*2] * inv; R[i] = int16[i*2+1] * inv; }
+  return buf;
+}
+
+async function scheduleNext() {
+  if (!S.playing || S.streamDone || S.streamSector >= S.streamEnd) {
+    S.streamDone = true; return;
+  }
+  const binFile = getBin(S.tracks[S.curIdx]);
+  if (!binFile) return;
+  const n = Math.min(STREAM_SECTS, S.streamEnd - S.streamSector);
+  try {
+    const buf = await decodeChunk(binFile, S.streamSector, n);
+    if (!S.playing) return;
+    const src = S.audioCtx.createBufferSource();
+    src.buffer = buf; src.connect(S.gainNode);
+    const when = Math.max(S.audioCtx.currentTime, S.nextStartTime);
+    src.start(when);
+    src.onended = () => {
+      S.schedNodes = S.schedNodes.filter(x => x !== src);
+      if (S.schedNodes.length === 0 && S.streamDone && S.playing) {
+        S.playing = false; autoNext();
+      }
+    };
+    S.schedNodes.push(src);
+    S.nextStartTime  = when + buf.duration;
+    S.streamSector  += n;
+    if (S.streamSector >= S.streamEnd) S.streamDone = true;
+  } catch(_) {}
+}
+
+function startScheduler() {
+  stopScheduler();
+  fillLookahead();
+  S.streamTimer = setInterval(fillLookahead, SCHED_MS);
+}
+function stopScheduler() { clearInterval(S.streamTimer); S.streamTimer = null; }
+function fillLookahead() {
+  if (!S.playing || S.streamDone) { stopScheduler(); return; }
+  if ((S.nextStartTime - S.audioCtx.currentTime) < LOOKAHEAD) scheduleNext();
+}
+function killNodes() {
+  stopScheduler();
+  for (const n of S.schedNodes) { try { n.onended = null; n.stop(); } catch(_) {} }
+  S.schedNodes = [];
+}
+
+// ── Playback ──────────────────────────────────────────────────────────────
+async function startTrack(offsetSecs = 0) {
+  const t = S.tracks[S.curIdx];
+  if (!t?.type.includes('AUDIO')) { setStatus('Not an audio track', 'status-err'); return; }
+  const binFile = getBin(t);
+  if (!binFile) { setStatus(`BIN not loaded: ${t.binName}`, 'status-err'); return; }
+  ensureCtx();
+  stopPlayback(false);
+
+  S.playing = true; S.paused = false;
+  S.streamSector      = t.start + Math.floor(offsetSecs * SEC_RATE);
+  S.streamEnd         = t.start + t.length;
+  S.streamDone        = false;
+  S.nextStartTime     = S.audioCtx.currentTime;
+  S.trackStartCtxTime = S.audioCtx.currentTime;
+  S.trackStartOffset  = offsetSecs;
+
+  setPlayUI('PLAYING');
+  updateTrackUI();
+  startTimer();
+  startScheduler();
+  setStatus(`Playing track ${t.number}  ·  ${t.binName}`, 'status-ok');
+}
+
+function stopPlayback(resetUI = true) {
+  killNodes();
+  S.playing = false; S.paused = false; S.pausePos = 0;
+  stopTimer();
+  if (resetUI) {
+    setPlayUI('STOPPED');
+    progressFill.style.transform = 'scaleX(0)';
+    elapsed.textContent = '00:00';
+    const t = S.tracks[S.curIdx];
+    if (t) remaining.textContent = `-${mmss(secOf(t.length))}`;
+    stopViz(); updateTrackList();
+  }
+}
+
+function playPause() {
+  if (S.paused) { startTrack(S.pausePos); return; }
+  if (S.playing) {
+    S.pausePos = (S.audioCtx.currentTime - S.trackStartCtxTime) + S.trackStartOffset;
+    killNodes(); S.playing = false; S.paused = true;
+    stopTimer(); setPlayUI('PAUSED'); stopViz();
+  } else {
+    startTrack(S.pausePos);
+  }
+}
+
+function autoNext() {
+  for (let i = S.curIdx + 1; i < S.tracks.length; i++) {
+    if (S.tracks[i].type.includes('AUDIO') && getBin(S.tracks[i])) {
+      S.curIdx = i; startTrack(); return;
+    }
+  }
+  setPlayUI('STOPPED'); stopViz(); setStatus('Playback complete', 'status-ok');
+}
+
+function prevTrack() {
+  for (let i = S.curIdx - 1; i >= 0; i--) {
+    if (S.tracks[i].type.includes('AUDIO') && getBin(S.tracks[i])) { S.curIdx = i; startTrack(); return; }
+  }
+}
+function nextTrack() {
+  for (let i = S.curIdx + 1; i < S.tracks.length; i++) {
+    if (S.tracks[i].type.includes('AUDIO') && getBin(S.tracks[i])) { S.curIdx = i; startTrack(); return; }
+  }
+}
+
+function setPlayUI(state) {
+  stateLabel.textContent = state;
+  stateLabel.className   = 'np-state' + (state === 'PLAYING' ? ' playing' : state === 'PAUSED' ? ' paused' : '');
+  btnPlay.textContent    = state === 'PLAYING' ? '⏸' : '▶';
+  btnPlay.classList.toggle('paused', state === 'PAUSED');
+  if (state === 'PLAYING') startViz(); else stopViz();
+}
+
+// ── Timer ─────────────────────────────────────────────────────────────────
+let timerID = null;
+function startTimer() { stopTimer(); timerID = setInterval(tick, 500); tick(); }
+function stopTimer()  { clearInterval(timerID); timerID = null; }
+function tick() {
+  if (!S.playing || !S.audioCtx) return;
+  const t   = S.tracks[S.curIdx];
+  const dur = secOf(t.length);
+  const pos = Math.min(dur, (S.audioCtx.currentTime - S.trackStartCtxTime) + S.trackStartOffset);
+  elapsed.textContent   = mmss(pos);
+  remaining.textContent = `-${mmss(dur - pos)}`;
+  progressFill.style.transform = `scaleX(${dur > 0 ? pos/dur : 0})`;
+  const b = getBin(t);
+  binTag.textContent = b ? b.name : '';
+}
+
+progressWrap.addEventListener('click', e => {
+  const t = S.tracks[S.curIdx];
+  if (!t?.type.includes('AUDIO')) return;
+  const r = progressWrap.getBoundingClientRect();
+  startTrack(((e.clientX - r.left) / r.width) * secOf(t.length));
+});
+
+// ── Volume ────────────────────────────────────────────────────────────────
+volSlider.addEventListener('input', () => {
+  S.volume = parseFloat(volSlider.value);
+  if (S.gainNode) S.gainNode.gain.value = S.volume;
+  const p = Math.round(S.volume * 100);
+  volPct.textContent = `${p}%`;
+  volSlider.style.background = `linear-gradient(90deg, var(--grn) ${p}%, var(--bdr) ${p}%)`;
+});
+volSlider.dispatchEvent(new Event('input'));
+
+// ── Canvas Visualizer ─────────────────────────────────────────────────────
+const vCtx = vizCanvas.getContext('2d');
+let vizRafId = null, vizPh = 0;
+const BARS = 38;
+
+function resizeViz() {
+  const dpr = window.devicePixelRatio || 1;
+  vizCanvas.width  = vizCanvas.offsetWidth  * dpr;
+  vizCanvas.height = 32 * dpr;
+}
+window.addEventListener('resize', resizeViz, { passive: true });
+
+function drawViz() {
+  const w = vizCanvas.width, h = vizCanvas.height;
+  vCtx.clearRect(0, 0, w, h);
+  vizPh += 0.14;
+  const bw = Math.floor(w / BARS) - 1;
+  for (let i = 0; i < BARS; i++) {
+    let v = Math.sin(i * 0.42 + vizPh) * 0.5 + 0.5;
+    v    += Math.sin(i * 0.85 - vizPh * 1.3) * 0.25;
+    v     = Math.max(0.04, Math.min(1, v * 0.76));
+    const bh = Math.round(v * h);
+    vCtx.fillStyle = v > 0.65 ? '#00d4ff' : v > 0.38 ? '#2060b0' : '#2a3a48';
+    vCtx.fillRect(i * (bw + 1), h - bh, bw, bh);
+  }
+  vizRafId = requestAnimationFrame(drawViz);
+}
+function startViz() { if (!vizRafId) { resizeViz(); vizRafId = requestAnimationFrame(drawViz); } }
+function stopViz()  { if (vizRafId) { cancelAnimationFrame(vizRafId); vizRafId = null; } vCtx?.clearRect(0, 0, vizCanvas.width, vizCanvas.height); }
+
+// ── Track list ────────────────────────────────────────────────────────────
+function buildTrackList() {
+  const frag = document.createDocumentFragment();
+  S.tracks.forEach((t, i) => {
+    const isAudio = t.type.includes('AUDIO');
+    const hasBin  = !!getBin(t);
+    const row     = document.createElement('div');
+    const disabled = !isAudio || !hasBin;
+    row.className  = 'track-row' + (disabled ? ' disabled' : '');
+    row.dataset.idx = i;
+    const badgeCls = !isAudio ? 'badge-data' : !hasBin ? 'badge-warn' : 'badge-audio';
+    const badgeTxt = !isAudio ? t.type : !hasBin ? `${t.type} ⚠` : t.type;
+    row.innerHTML = `
+      <span class="track-marker"></span>
+      <span class="track-num">${String(t.number).padStart(2,'0')}</span>
+      <span><span class="badge ${badgeCls}">${badgeTxt}</span></span>
+      <span class="track-dur">${isAudio ? mmss(secOf(t.length)) : '—'}</span>
+      <span class="track-start">${mmssff(t.start)}</span>`;
+    if (!disabled) row.addEventListener('click', () => { S.curIdx = i; startTrack(); });
+    frag.appendChild(row);
+  });
+  tracklist.innerHTML = '';
+  tracklist.appendChild(frag);
+}
+
+function updateTrackUI() {
+  const t = S.tracks[S.curIdx];
+  if (!t) return;
+  trackNum.textContent  = String(t.number).padStart(2, '0');
+  trackName.textContent = `${t.type} · ${t.binName || ''}`;
+  totalTime.textContent = mmss(secOf(t.length));
+  elapsed.textContent   = '00:00';
+  remaining.textContent = `-${mmss(secOf(t.length))}`;
+  progressFill.style.transform = 'scaleX(0)';
+  updateTrackList();
+}
+
+function updateTrackList() {
+  tracklist.querySelectorAll('.track-row').forEach((row, i) => {
+    const active = i === S.curIdx;
+    row.classList.toggle('active', active);
+    row.querySelector('.track-marker').textContent = active && S.playing ? '▶' : active ? '›' : '';
+    if (active) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (!player.classList.contains('visible') || e.target.tagName === 'INPUT') return;
+  switch (e.code) {
+    case 'Space':      e.preventDefault(); playPause(); break;
+    case 'KeyS':       stopPlayback(); break;
+    case 'ArrowRight': seekRel(10);  break;
+    case 'ArrowLeft':  seekRel(-10); break;
+    case 'ArrowUp':    e.preventDefault(); prevTrack(); break;
+    case 'ArrowDown':  e.preventDefault(); nextTrack(); break;
+    case 'KeyN':       nextTrack(); break;
+    case 'KeyP':       prevTrack(); break;
+    case 'Equal': case 'NumpadAdd':
+      volSlider.value = Math.min(1, +volSlider.value + 0.05);
+      volSlider.dispatchEvent(new Event('input')); break;
+    case 'Minus': case 'NumpadSubtract':
+      volSlider.value = Math.max(0, +volSlider.value - 0.05);
+      volSlider.dispatchEvent(new Event('input')); break;
+    case 'KeyR': ripCurrentTrack(); break;
+    case 'KeyA': ripAllTracks();    break;
+  }
+});
+
+function seekRel(delta) {
+  const t = S.tracks[S.curIdx];
+  if (!t?.type.includes('AUDIO')) return;
+  const cur = S.playing
+    ? (S.audioCtx.currentTime - S.trackStartCtxTime) + S.trackStartOffset
+    : S.pausePos;
+  startTrack(Math.max(0, Math.min(secOf(t.length) - 0.1, cur + delta)));
+}
+
+// ── Buttons ───────────────────────────────────────────────────────────────
+btnPlay.addEventListener('click', playPause);
+btnStop.addEventListener('click', () => stopPlayback());
+btnPrev.addEventListener('click', prevTrack);
+btnNext.addEventListener('click', nextTrack);
+btnRip.addEventListener('click', ripCurrentTrack);
+btnRipAll.addEventListener('click', ripAllTracks);
+
+// ── WAV Ripper ────────────────────────────────────────────────────────────
+function wavHeader(samples) {
+  const ds = samples * CH * BPS;
+  const b  = new ArrayBuffer(44), v = new DataView(b);
+  const s4 = (o, s) => { for (let i=0;i<4;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  s4(0,'RIFF'); v.setUint32(4, ds+36, true);
+  s4(8,'WAVE'); s4(12,'fmt '); v.setUint32(16,16,true);
+  v.setUint16(20,1,true); v.setUint16(22,CH,true);
+  v.setUint32(24,SR,true); v.setUint32(28,SR*CH*BPS,true);
+  v.setUint16(32,CH*BPS,true); v.setUint16(34,BPS*8,true);
+  s4(36,'data'); v.setUint32(40,ds,true);
+  return b;
+}
+
+async function ripTrack(t, binFile, onProg) {
+  const chunks = [wavHeader(Math.floor(t.length * SECTOR / BPS / CH))];
+  const CHUNK  = SEC_RATE;
+  let done = 0;
+  while (done < t.length) {
+    if (S.ripCancel) throw new Error('Cancelled');
+    const n = Math.min(CHUNK, t.length - done);
+    chunks.push(await readBlobAsAB(binFile.slice((t.start+done)*SECTOR, (t.start+done+n)*SECTOR)));
+    done += n;
+    if (onProg) onProg(done, t.length);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  const total = chunks.reduce((a,b) => a + b.byteLength, 0);
+  const out   = new Uint8Array(total); let pos = 0;
+  for (const c of chunks) { out.set(new Uint8Array(c), pos); pos += c.byteLength; }
+  return out.buffer;
+}
+
+function downloadWav(ab, name) {
+  const url = URL.createObjectURL(new Blob([ab], { type: 'audio/wav' }));
+  const a   = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+async function ripCurrentTrack() {
+  const t = S.tracks[S.curIdx];
+  if (!t?.type.includes('AUDIO')) { setStatus('Not an audio track', 'status-err'); return; }
+  const b = getBin(t);
+  if (!b) { setStatus(`BIN not loaded: ${t.binName}`, 'status-err'); return; }
+  await runRip([{ t, b }], 'RIPPING TRACK', `Track ${t.number} → WAV`);
+}
+
+async function ripAllTracks() {
+  const items = S.tracks.filter(t => t.type.includes('AUDIO') && getBin(t)).map(t => ({ t, b: getBin(t) }));
+  if (!items.length) { setStatus('No playable audio tracks to rip', 'status-err'); return; }
+  await runRip(items, 'RIPPING ALL', `${items.length} track(s) → WAV`);
+}
+
+async function runRip(items, title, subtitle) {
+  S.ripCancel = false;
+  ripTitle.textContent = title; ripSubtitle.textContent = subtitle;
+  ripLog.innerHTML = ''; ripBarFill.style.width = '0%';
+  ripTime.textContent = '00:00 / 00:00'; ripPct.textContent = '0%';
+  ripTrackName.textContent = '';
+  ripOverlay.classList.add('visible');
+  let ok = 0, fail = 0;
+  for (const { t, b } of items) {
+    if (S.ripCancel) break;
+    const fname = `track${String(t.number).padStart(2,'0')}.wav`;
+    ripTrackName.textContent = fname;
+    const entry = Object.assign(document.createElement('div'), { className: 'rip-log-entry cur', textContent: `⟳ ${fname}` });
+    ripLog.appendChild(entry); ripLog.scrollTop = ripLog.scrollHeight;
+    try {
+      const ab = await ripTrack(t, b, (done, total) => {
+        const p = total > 0 ? done/total : 0;
+        ripBarFill.style.width = `${p*100}%`;
+        ripPct.textContent     = `${Math.round(p*100)}%`;
+        ripTime.textContent    = `${mmss(secOf(done))} / ${mmss(secOf(total))}`;
+      });
+      downloadWav(ab, fname);
+      entry.className = 'rip-log-entry ok';
+      entry.textContent = `✓ ${fname}  (${(ab.byteLength/1048576).toFixed(1)} MB)`;
+      ok++;
+    } catch(err) {
+      entry.className = 'rip-log-entry err';
+      entry.textContent = `✗ ${fname}: ${err.message}`;
+      fail++;
+    }
+    await new Promise(r => setTimeout(r, 50));
+  }
+  ripBarFill.style.width = '100%'; ripPct.textContent = '100%';
+  ripTrackName.textContent = S.ripCancel ? 'Cancelled.' : `Done — ${ok} ok${fail ? `, ${fail} failed` : ''}`;
+  if (!S.ripCancel && fail === 0) {
+    setTimeout(() => ripOverlay.classList.remove('visible'), 1400);
+    setStatus(`Ripped ${ok} track(s) → Downloads`, 'status-ok');
+  } else {
+    setStatus(fail ? `${fail} failed` : 'Cancelled', fail ? 'status-err' : '');
+  }
+}
+
+ripCancel.addEventListener('click', () => { S.ripCancel = true; setTimeout(() => ripOverlay.classList.remove('visible'), 300); });
+</script>
+</body>
+</html>
